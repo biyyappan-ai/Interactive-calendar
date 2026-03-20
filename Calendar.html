@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Interactive Calendar (No Storage)</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #f1f3f4;
+  text-align: center;
+}
+
+.calendar {
+  width: 420px;
+  margin: 20px auto;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.day-name {
+  font-weight: bold;
+}
+
+.day {
+  background: white;
+  min-height: 80px;
+  border-radius: 6px;
+  padding: 5px;
+  border: 1px solid #ddd;
+  user-select: none;
+}
+
+.day.selected {
+  background: #e8f0fe;
+}
+
+.event {
+  font-size: 10px;
+  margin-top: 2px;
+  padding: 3px;
+  color: white;
+  cursor: pointer;
+}
+
+.start { border-radius: 6px 0 0 6px; }
+.middle { border-radius: 0; }
+.end { border-radius: 0 6px 6px 0; }
+
+</style>
+</head>
+
+<body>
+
+<h2 id="monthYear"></h2>
+<button onclick="prevMonth()">◀</button>
+<button onclick="nextMonth()">▶</button>
+
+<div class="calendar" id="calendar"></div>
+
+<input type="text" id="eventInput" placeholder="Enter event">
+<button onclick="addEvent()">Add Event</button>
+
+<script>
+const calendar = document.getElementById("calendar");
+let currentDate = new Date();
+let selectedDates = [];
+let isDragging = false;
+
+// ❌ No localStorage → use in-memory object
+let events = {};
+
+const colors = ["#4285F4","#DB4437","#F4B400","#0F9D58","#AB47BC","#00ACC1"];
+
+function getColor(text){
+  let hash=0;
+  for(let i=0;i<text.length;i++){
+    hash=text.charCodeAt(i)+((hash<<5)-hash);
+  }
+  return colors[Math.abs(hash)%colors.length];
+}
+
+function renderCalendar(){
+  calendar.innerHTML="";
+  selectedDates=[];
+
+  let year=currentDate.getFullYear();
+  let month=currentDate.getMonth();
+
+  document.getElementById("monthYear").innerText =
+    currentDate.toLocaleString("default",{month:"long",year:"numeric"});
+
+  let firstDay=new Date(year,month,1).getDay();
+  let lastDate=new Date(year,month+1,0).getDate();
+
+  ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(d=>{
+    let div=document.createElement("div");
+    div.className="day-name";
+    div.innerText=d;
+    calendar.appendChild(div);
+  });
+
+  for(let i=0;i<firstDay;i++){
+    calendar.appendChild(document.createElement("div"));
+  }
+
+  let dayElements=[];
+
+  for(let d=1; d<=lastDate; d++){
+    let dateKey=`${year}-${month+1}-${d}`;
+    let div=document.createElement("div");
+    div.className="day";
+    div.innerHTML=`<strong>${d}</strong>`;
+
+    // Drag select
+    div.onmousedown=()=>{
+      isDragging=true;
+      toggleSelect(div,dateKey);
+    };
+
+    div.onmouseover=()=>{
+      if(isDragging){
+        toggleSelect(div,dateKey);
+      }
+    };
+
+    div.onmouseup=()=>isDragging=false;
+
+    // Load events
+    if(events[dateKey]){
+      events[dateKey].forEach((ev, index)=>{
+        let eDiv=document.createElement("div");
+        eDiv.className="event";
+        eDiv.innerText=ev;
+        eDiv.style.background=getColor(ev);
+
+        // ✅ DELETE ON CLICK
+        eDiv.title="Click to delete";
+        eDiv.onclick=(e)=>{
+          e.stopPropagation();
+
+          if(confirm("Delete this event?")){
+            events[dateKey].splice(index,1);
+
+            if(events[dateKey].length===0){
+              delete events[dateKey];
+            }
+
+            renderCalendar();
+          }
+        };
+
+        div.appendChild(eDiv);
+      });
+    }
+
+    calendar.appendChild(div);
+    dayElements.push({div,dateKey});
+  }
+
+  document.body.onmouseup=()=>isDragging=false;
+
+  mergeBars(dayElements);
+}
+
+function toggleSelect(div,date){
+  if(selectedDates.includes(date)){
+    selectedDates=selectedDates.filter(d=>d!==date);
+    div.classList.remove("selected");
+  } else {
+    selectedDates.push(date);
+    div.classList.add("selected");
+  }
+}
+
+function addEvent(){
+  let text=document.getElementById("eventInput").value;
+  if(!text) return alert("Enter event");
+
+  selectedDates.forEach(date=>{
+    if(!events[date]) events[date]=[];
+    events[date].push(text);
+  });
+
+  document.getElementById("eventInput").value="";
+  renderCalendar();
+}
+
+// Merge bars
+function mergeBars(dayElements){
+  dayElements.forEach((day,i)=>{
+    let evDivs=day.div.querySelectorAll(".event");
+
+    evDivs.forEach(evDiv=>{
+      let text=evDiv.innerText;
+
+      let prev=dayElements[i-1];
+      let next=dayElements[i+1];
+
+      let prevMatch=prev && hasEvent(prev.div,text);
+      let nextMatch=next && hasEvent(next.div,text);
+
+      let isRowBreakPrev = (i % 7 === 0);
+      let isRowBreakNext = ((i+1) % 7 === 0);
+
+      if(prevMatch && nextMatch && !isRowBreakPrev && !isRowBreakNext){
+        evDiv.classList.add("middle");
+      }
+      else if(prevMatch && !isRowBreakPrev){
+        evDiv.classList.add("end");
+      }
+      else if(nextMatch && !isRowBreakNext){
+        evDiv.classList.add("start");
+      }
+    });
+  });
+}
+
+function hasEvent(div,text){
+  return [...div.querySelectorAll(".event")]
+    .some(e=>e.innerText===text);
+}
+
+function prevMonth(){
+  currentDate.setMonth(currentDate.getMonth()-1);
+  renderCalendar();
+}
+
+function nextMonth(){
+  currentDate.setMonth(currentDate.getMonth()+1);
+  renderCalendar();
+}
+
+renderCalendar();
+</script>
+
+</body>
+</html>
